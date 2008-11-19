@@ -1,0 +1,144 @@
+= sfPropelSpamTagBehaviorPlugin plugin =
+
+The `sfPropelSpamTagBehaviorPlugin` is a symfony plugin that provides a new Propel behavior related to spam filtering on records. If you enable this behavior for one of your model class, all objects of this class with the attribute `SpamTag` set to more than `1` will no longer appear on database queries.
+
+== Installation ==
+
+  * Install the plugin
+  
+{{{
+$ symfony plugin-install http://plugins.symfony-project.com/sfPropelSpamTagBehaviorPlugin
+}}}
+
+  * Enable Propel behavior support in `propel.ini`:
+
+{{{
+propel.builder.AddBehaviors = true
+}}}
+
+  * If you use symfony 1.0, change one builder class in `propel.ini` to avoid a bug in behaviors (not necessary in symfony 1.1):
+
+{{{
+; builder settings
+propel.builder.peer.class = plugins.sfPropelSpamTagBehaviorPlugin.lib.SfPeerBuilder
+}}}
+
+  * Each table for which you want this behavior enabled must have one integer column to support the moderation state. If there is none, add a `moderation_status` column in `schema.yml`
+
+{{{
+propel:
+  item:
+    id:
+    title:             varchar(255)
+    body:              longvarchar
+    created_at:
+    updated_at:
+    moderation_status: { type: integer, default: 1, index: true }    # Add this column to each table
+}}}
+
+  * Activate the behavior for those of your Propel models that need spam moderation:
+
+{{{
+// lib/model/Item.php
+class Item
+{
+}
+
+sfPropelBehavior::add('Item', array('spam_tag'));
+}}}
+
+    By default, the plugin will consider the `moderation_status` column for this model. You can also specify another column if your model doesn't allow you to use a `moderation_status` column:
+
+{{{
+sfPropelBehavior::add('Item', array('spam_tag' => array('column' => 'my_spam_tag')));
+}}}
+
+    Note that the column must still be an integer with default value equal to '1'.
+    
+  * Rebuild your model:
+
+{{{
+$ symfony propel-build-model
+}}}
+
+== Usage ==
+
+If you enable the behavior on a model, selection methods of this model (`retrieveByPk`, `doCount`, `doSelect`, `doSelectOne`, `doSelectJoinXXX`, `doSelectJoinAll`, `doSelectJoinAllExceptXXX`, `doSelectRS`) will not return objects marked as spam.
+
+{{{
+$item = new Item();
+$item->save();
+$id = $item->getId();
+$item->tagAsSpam();
+$item = ItemPeer::retrieveByPk($id);   // Returns null
+}}}
+
+You can inspect the spam tag of any object through the `getSpamTag()` method.
+
+{{{
+$spam_tag = $item->getSpamTag();
+switch($spam_tag)
+{
+  case sfPropelSpamTagBehavior::TAGGED_SAFE:
+    echo "The item has been checked and marked as safe";
+    break;
+  case sfPropelSpamTagBehavior::NOT_CHECKED:
+    echo "The item is not yet checked";
+    break;
+  case sfPropelSpamTagBehavior::TAGGED_AUTO_SPAM:
+    echo "The item has been checked by an automated service and marked as spam";
+    break;
+  case sfPropelSpamTagBehavior::TAGGED_SPAM:
+    echo "The item has been checked and marked as spam";
+}
+}}}
+
+By default, records with a `NOT_CHECKED` and `TAGGED_SAFE` status are shown, others are hidden. Nevertheless, if you want to force moderation, you just need to change one setting in the `app.yml`:
+
+{{{
+all:
+  sfPropelSpamTagBehavior:
+    display_treshold: 0     # Only allow records marked TAGGED_SAFE
+   #display_treshold: 1     # Allow records marked TAGGED_SAFE, and NOT_CHECKED
+   #display_treshold: 2     # Allow records marked TAGGED_SAFE, NOT_CHECKED, and TAGGED_AUTO_SPAM
+   #display_treshold: 3     # Allow all records
+}}}
+
+With this setting, only records marked with `TAGGED_SAFE` are returned. 
+
+The behavior can be deactivated temporarily for all models through the `sfPropelSpamTagBehavior::disable()` method. This will allow you to query the database for tagged records.
+
+{{{
+$item = ItemPeer::retrieveByPk($id);   // Returns null
+sfPropelSpamTagBehavior::disable();
+$item = ItemPeer::retrieveByPk($id);   // Returns an item
+}}}
+
+Don't forget to enable the behavior again afterwards:
+
+{{{
+  sfPropelSpamTagBehavior::enable();
+}}}
+
+== Todo ==
+
+ * Add a Report table to allow users to complain about a content (hash between user_id, object_id and object_class)
+ * Add lists for moderators (reported content, latest published content, latest spammed content)
+ * Add a batch to remove old contents marked as spam
+
+== Changelog ==
+
+=== Trunk ===
+
+=== 2007-09-09 | 0.9.1 Beta ===
+
+  * francois: Added unit tests
+  * francois: Improved documentation
+  * francois: Added getter and setter for spam tag column
+  * francois: [Break BC] changed the spam column to a four-state integer field
+  * francois: Added support for a priori and a posteriori moderation
+  * francois: Made the plugin compatible with symfony 1.0
+
+=== 2007-03-23 | 0.9.0 Beta ===
+
+  * francois: Initial release
